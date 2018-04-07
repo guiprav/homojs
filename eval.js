@@ -1,57 +1,86 @@
-exports.expr = (scopes, list) => {
+exports.stmts = (list, scopes) => {
+  scopes = scopes || [];
+
+  let ret;
+
+  for (let expr of list) {
+    ret = exports.expr(expr, scopes);
+  }
+
+  return ret;
+};
+
+exports.expr = (list, scopes) => {
+  scopes = scopes || [];
+
   if (list[0] === "'") {
     return list.slice(1);
   }
 
-  function getScope() {
-    return scopes[scopes.length - 1] || global;
-  }
-
-  function find(name) {
-    for (let i = scopes.length - 1; i >= 0; --i) {
-      let scope = scopes[i];
-      let value = scope[name];
-
-      if (scope[name]) {
-        return { scope, name, value };
-      }
-    }
-
-    return { scope: global, name, value: global[name] };
-  }
-
-  let scope = getScope();
+  let scope = getScope(scopes);
 
   switch (list[0]) {
+    case '%':
+    case '*':
+    case '**':
     case '+':
     case '-':
-    case '*':
     case '/':
-    case '%': {
-      let reducer = {
-        '+': (a, b) => a + b,
-        '-': (a, b) => a - b,
-        '*': (a, b) => a * b,
-        '/': (a, b) => a / b,
-        '%': (a, b) => a % b,
-      }[list[0]];
 
-      return list.slice(1)
-        .map(
-          x => !Array.isArray(x) ?
-            scope[x] : exports.expr(scopes, x)
-        )
-        .reduce(reducer);
+    case '&&':
+    case '||':
+
+      return evalListValues(list.slice(1), scopes)
+        .reduce(reducers[list[0]]);
+
+    case '=': {
+      let target = find(
+        evalValue(list[1], scopes, 'noDeref'),
+        scopes
+      );
+
+      return target.scope[target.name] = evalValue(
+        list[2], scopes
+      );
+    }
+
+    case '#': {
+      let hash = {};
+
+      for (let pair of list.slice(1)) {
+        let k = evalValue(pair[0], scopes, 'noDeref');
+        let v = evalValue(pair[1], scopes);
+
+        hash[k] = v;
+      }
+
+      return hash;
     }
 
     case '.': {
-      let root = find(list[1]);
-      let prev = global;
+      let chain = evalListValues(
+        list.slice(1), scopes, 'noDeref'
+      );
 
-      let value = list.slice(2).reduce((v, k) => {
+      let root = typeof chain[0] === 'object' ?
+        chain[0] : find(chain[0], scopes).value;
+
+      let prev = global;
+      let value;
+
+      value = chain.slice(1).reduce((v, k) => {
+        if (v === undefined || v === null) {
+          throw new TypeError(
+            `Cannot read property '${k}' of ${v}\n` +
+            `While execting: ${JSON.stringify(
+              list, null, 2
+            )}`
+          );
+        }
+
         prev = v;
         return v[k];
-      }, root.value);
+      }, root);
 
       if (typeof value === 'function') {
         value = value.bind(prev);
@@ -60,10 +89,13 @@ exports.expr = (scopes, list) => {
       return value;
     }
 
-    case 'let':
-      return scope[list[1]] = exports.expr(
-        scopes, list[2]
+    case 'let': {
+      let k = evalValue(list[1], scopes, 'noDeref');
+
+      return scope[k] = exports.expr(
+        list[2], scopes
       );
+    }
 
     case 'str':
       return list[1];
@@ -77,28 +109,71 @@ exports.expr = (scopes, list) => {
         }
 
         return exports.stmts(
-          [...scopes, fnScope], list[2]
+          list[2], [...scopes, fnScope]
         );
       };
 
     default: {
-      let fn = !Array.isArray(list[0]) ?
-        scope[list[0]] : exports.expr(scopes, list[0]);
+      let fn = evalValue(list[0], scopes);
 
-      return fn(...list.slice(1).map(
-        x => !Array.isArray(x) ?
-          scope[x] : exports.expr(scopes, x)
-      ));
+      if (typeof fn !== 'function') {
+        throw new TypeError(
+          `${fn} is not a function\n` +
+          `While executing: ${JSON.stringify(
+            list, null, 2
+          )}`
+        );
+      }
+
+      return fn(...evalListValues(list.slice(1), scopes));
     }
   }
 };
 
-exports.stmts = (scopes, list) => {
-  let ret;
+function getScope(scopes) {
+  scopes = scopes || [];
+  return scopes[scopes.length - 1] || global;
+}
 
-  for (let expr of list) {
-    ret = exports.expr(scopes, expr);
+function find(name, scopes) {
+  scopes = scopes || [];
+
+  for (let i = scopes.length - 1; i >= 0; --i) {
+    let scope = scopes[i];
+    let value = scope[name];
+
+    if (scope[name] !== undefined) {
+      return { scope, name, value };
+    }
   }
 
-  return ret;
+  return { scope: global, name, value: global[name] };
+}
+
+function evalListValues(list, scopes, opt) {
+  return list.map(x => evalValue(x, scopes, opt));
+}
+
+function evalValue(val, scopes, opt) {
+  if (Array.isArray(val)) {
+    return exports.expr(val, scopes);
+  }
+
+  if (opt === 'noDeref' || typeof val !== 'string') {
+    return val;
+  }
+
+  return find(val, scopes).value;
+}
+
+let reducers = {
+  '%': (a, b) => a % b,
+  '*': (a, b) => a * b,
+  '**': (a, b) => a ** b,
+  '+': (a, b) => a + b,
+  '-': (a, b) => a - b,
+  '/': (a, b) => a / b,
+
+  '&&': (a, b) => a && b,
+  '||': (a, b) => a || b,
 };

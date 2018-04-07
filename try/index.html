@@ -1,0 +1,99 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Try Homo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.3.3/ace.js"></script>
+
+<style>
+  * {
+    box-sizing: border-box;
+  }
+
+  #tryHomo {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 40px;
+    margin: 0;
+    font-size: 32px;
+    text-align: center;
+    background-color: hotpink;
+  }
+
+  #editor {
+    position: fixed;
+    left: 0;
+    top: 40px;
+    bottom: 50px;
+    width: 50%;
+  }
+
+  #playground {
+    position: fixed;
+    right: 0;
+    top: 40px;
+    bottom: 50px;
+    width: 50%;
+  }
+
+  #runBtn {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    z-index: 100;
+    width: 100%;
+    height: 50px;
+  }
+</style>
+
+<h1 id="tryHomo">
+  Try Homo
+</h1>
+
+<div id="editor">(let log (. console log))
+
+(let random (. Math random))
+(let round (. Math round))
+
+(let randomRange (fn (min max) (
+  (let diff (- max min))
+  (round (+ min (* diff (random))))
+)))
+
+(let randomItem (fn (items) (
+  (- (randomRange 1 (. items length)) 1)
+)))
+
+(let indices (' 1 2 3 4 5))
+
+(let colorTable (#
+  (1 "#d40606")
+  (2 "#ee9c00")
+  (3 "#e3ff00")
+  (4 "#06bf00")
+  (5 "#001a98")
+))
+
+(let playground ($ "#playground"))
+
+(let updateBg (fn () (
+  ((. playground css) "background-color" (. colorTable (randomItem indices)))
+)))
+
+(let interval (setInterval updateBg 100))
+
+(let stop (fn () (
+  (clearInterval interval)
+)))
+
+((. ($ "#runBtn, #playground") on) "click" (fn () (
+  (stop)
+)))</div>
+
+<div id="playground"></div>
+
+<button id="runBtn">
+  Run!
+</button>
+
+<script src="bundle.js"></script>
